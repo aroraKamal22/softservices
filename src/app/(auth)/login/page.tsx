@@ -49,16 +49,24 @@ export default function LoginPage() {
         email: data.email,
         password: data.password,
         redirect: false,
+        callbackUrl: "/",
       });
 
-      if (result?.error) {
+      if (!result) {
+        setError("Connection error. Please try again.");
+        return;
+      }
+
+      if (result.error) {
         setError("Invalid email or password. Please try again.");
         return;
       }
 
-      router.push("/");
-      router.refresh();
+      if (result.ok) {
+        window.location.href = "/";
+      }
     } catch (error) {
+      console.error("Login error:", error);
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setIsLoading(false);
