@@ -33,7 +33,7 @@ export default async function middleware(request: NextRequest) {
   // Check authentication using JWT token
   const token = await getToken({
     req: request,
-    secret: process.env.NEXTAUTH_SECRET,
+    secret: process.env.NEXTAUTH_SECRET || "fallback-secret-for-development-only",
   });
 
   if (!token) {
