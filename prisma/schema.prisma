@@ -1,0 +1,1401 @@
+// Soft Services ERP - Complete Database Schema
+// PostgreSQL + Prisma ORM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// PHASE 1: Authentication & Authorization
+// ==========================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  name          String
+  phone         String?
+  avatar        String?
+  isActive      Boolean   @default(true)
+  emailVerified DateTime?
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  userRoles     UserRole[]
+  auditLogs     AuditLog[]
+  employee      Employee?
+
+  // Site access
+  siteAccess    UserSiteAccess[]
+
+  // Activity relations
+  complaintsAssigned     Complaint[]           @relation("AssignedTo")
+  complaintsCreated      Complaint[]           @relation("CreatedBy")
+  complaintsResolved     Complaint[]           @relation("ResolvedBy")
+  inspections            Inspection[]
+  attendanceMarkedBy     Attendance[]          @relation("MarkedBy")
+  tasksAssigned          CleaningTaskAssignment[]
+  taskCompletions        TaskCompletion[]
+  workOrdersCreated      WorkOrder[]           @relation("WOCreatedBy")
+  incidentsReported      Incident[]            @relation("ReportedBy")
+  incidentsInvestigated  Incident[]            @relation("InvestigatedBy")
+  trainingsCreated       Training[]
+  documentsUploaded      Document[]
+  notificationsSent      Notification[]        @relation("SentBy")
+  notificationsReceived  Notification[]        @relation("ReceivedBy")
+  shiftHandoversFrom     ShiftHandover[]       @relation("HandoverFrom")
+  shiftHandoversTo       ShiftHandover[]       @relation("HandoverTo")
+  feedbackReceived       Feedback[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  module      String
+  action      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  rolePermissions RolePermission[]
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model UserSiteAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  siteId    String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, siteId])
+  @@map("user_site_access")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  module     String
+  entityId   String?
+  entityType String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([module])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ==========================================
+// PHASE 2: Site Structure
+// ==========================================
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  logo      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sites Site[]
+
+  @@map("companies")
+}
+
+model Site {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  code      String   @unique
+  address   String?
+  city      String?
+  state     String?
+  country   String?
+  pincode   String?
+  phone     String?
+  email     String?
+  latitude  Float?
+  longitude Float?
+  timezone  String   @default("Asia/Kolkata")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  buildings Building[]
+
+  // Relations
+  userAccess           UserSiteAccess[]
+  employees            Employee[]
+  shifts               Shift[]
+  rosters              Roster[]
+  attendances          Attendance[]
+  cleaningSchedules    CleaningSchedule[]
+  inspections          Inspection[]
+  complaints           Complaint[]
+  clients              Client[]
+  vendors              Vendor[]
+  amcs                 AMC[]
+  inventoryItems       InventoryItem[]
+  stockTransactions    StockTransaction[]
+  materialIndents      MaterialIndent[]
+  workOrders           WorkOrder[]
+  incidents            Incident[]
+  trainings            Training[]
+  documents            Document[]
+  meetingRooms         MeetingRoom[]
+  events               Event[]
+  notifications        Notification[]
+  qrCodes              QRCode[]
+  shiftHandovers       ShiftHandover[]
+
+  @@index([companyId])
+  @@map("sites")
+}
+
+model Building {
+  id        String   @id @default(cuid())
+  siteId    String
+  name      String
+  code      String
+  address   String?
+  floors    Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site   Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  floorsList Floor[]
+
+  @@unique([siteId, code])
+  @@map("buildings")
+}
+
+model Floor {
+  id         String   @id @default(cuid())
+  buildingId String
+  name       String
+  code       String
+  level      Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  zones    Zone[]
+
+  @@unique([buildingId, code])
+  @@map("floors")
+}
+
+model Zone {
+  id        String   @id @default(cuid())
+  floorId   String
+  name      String
+  code      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  floor Floor  @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  areas Area[]
+
+  @@unique([floorId, code])
+  @@map("zones")
+}
+
+model Area {
+  id         String   @id @default(cuid())
+  zoneId     String
+  areaTypeId String
+  name       String
+  code       String
+  sqft       Float?
+  capacity   Int?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  zone     Zone     @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  areaType AreaType @relation(fields: [areaTypeId], references: [id])
+
+  // Relations
+  cleaningSchedules CleaningSchedule[]
+  cleaningTasks     CleaningTaskAssignment[]
+  inspections       Inspection[]
+  complaints        Complaint[]
+  qrCodes           QRCode[]
+
+  @@unique([zoneId, code])
+  @@map("areas")
+}
+
+model AreaType {
+  id                  String   @id @default(cuid())
+  name                String   @unique
+  description         String?
+  defaultFrequency    String?  // hourly, daily, weekly, monthly
+  defaultCleaningTime Int?     // minutes
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  areas              Area[]
+  cleaningTasks      CleaningTask[]
+  inspectionTemplates InspectionTemplate[]
+
+  @@map("area_types")
+}
+
+// ==========================================
+// PHASE 3: Manpower Management
+// ==========================================
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+
+  @@map("departments")
+}
+
+model Designation {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  code      String   @unique
+  level     Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+
+  @@map("designations")
+}
+
+model Employee {
+  id              String    @id @default(cuid())
+  userId          String?   @unique
+  siteId          String
+  departmentId    String
+  designationId   String
+  employeeCode    String    @unique
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String
+  alternatePhone  String?
+  dateOfBirth     DateTime?
+  dateOfJoining   DateTime
+  dateOfLeaving   DateTime?
+  gender          String?
+  bloodGroup      String?
+  address         String?
+  city            String?
+  state           String?
+  pincode         String?
+  emergencyContact String?
+  emergencyPhone  String?
+  aadharNumber    String?
+  panNumber       String?
+  bankName        String?
+  bankAccount     String?
+  ifscCode        String?
+  pfNumber        String?
+  esiNumber       String?
+  photo           String?
+  status          String    @default("active") // active, inactive, terminated
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  site        Site        @relation(fields: [siteId], references: [id])
+  department  Department  @relation(fields: [departmentId], references: [id])
+  designation Designation @relation(fields: [designationId], references: [id])
+
+  // Relations
+  documents         EmployeeDocument[]
+  rosters           Roster[]
+  attendances       Attendance[]
+  leaves            Leave[]
+  taskAssignments   CleaningTaskAssignment[]
+  trainingAttendances TrainingAttendance[]
+  ppeIssues         PPEIssue[]
+
+  @@index([siteId])
+  @@index([departmentId])
+  @@map("employees")
+}
+
+model EmployeeDocument {
+  id          String    @id @default(cuid())
+  employeeId  String
+  documentType String
+  documentNumber String?
+  filePath    String
+  expiryDate  DateTime?
+  isVerified  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_documents")
+}
+
+model Shift {
+  id        String   @id @default(cuid())
+  siteId    String
+  name      String
+  code      String
+  startTime String   // HH:mm format
+  endTime   String   // HH:mm format
+  breakMins Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site    Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  rosters Roster[]
+  attendances Attendance[]
+
+  @@unique([siteId, code])
+  @@map("shifts")
+}
+
+model Roster {
+  id         String   @id @default(cuid())
+  siteId     String
+  employeeId String
+  shiftId    String
+  date       DateTime @db.Date
+  status     String   @default("scheduled") // scheduled, present, absent, leave, holiday
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  site     Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  shift    Shift    @relation(fields: [shiftId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([siteId, date])
+  @@map("rosters")
+}
+
+model Attendance {
+  id           String    @id @default(cuid())
+  siteId       String
+  employeeId   String
+  shiftId      String?
+  date         DateTime  @db.Date
+  checkIn      DateTime?
+  checkOut     DateTime?
+  checkInPhoto String?
+  checkOutPhoto String?
+  checkInLocation String?
+  checkOutLocation String?
+  status       String    @default("present") // present, absent, half-day, late, leave
+  workHours    Float?
+  overtimeHours Float?
+  remarks      String?
+  markedById   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  shift    Shift?    @relation(fields: [shiftId], references: [id])
+  markedBy User?     @relation("MarkedBy", fields: [markedById], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([siteId, date])
+  @@map("attendances")
+}
+
+model Leave {
+  id          String    @id @default(cuid())
+  employeeId  String
+  leaveType   String    // casual, sick, earned, unpaid
+  fromDate    DateTime  @db.Date
+  toDate      DateTime  @db.Date
+  days        Float
+  reason      String?
+  status      String    @default("pending") // pending, approved, rejected, cancelled
+  approvedBy  String?
+  approvedAt  DateTime?
+  remarks     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("leaves")
+}
+
+// ==========================================
+// PHASE 4: Housekeeping Module
+// ==========================================
+
+model CleaningTask {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String?
+  areaTypeId          String?
+  frequency           String   // hourly, daily, weekly, monthly, quarterly, yearly
+  estimatedTime       Int      @default(30) // minutes
+  checklistItems      Json?    // Array of checklist items
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  areaType  AreaType? @relation(fields: [areaTypeId], references: [id])
+  schedules CleaningSchedule[]
+
+  @@map("cleaning_tasks")
+}
+
+model CleaningSchedule {
+  id            String    @id @default(cuid())
+  siteId        String
+  areaId        String?
+  taskId        String
+  frequency     String    // hourly, daily, weekly, monthly
+  scheduledTime String?   // HH:mm for hourly/daily
+  dayOfWeek     Int?      // 0-6 for weekly
+  dayOfMonth    Int?      // 1-31 for monthly
+  startDate     DateTime  @db.Date
+  endDate       DateTime? @db.Date
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  area        Area?        @relation(fields: [areaId], references: [id])
+  task        CleaningTask @relation(fields: [taskId], references: [id])
+  assignments CleaningTaskAssignment[]
+
+  @@index([siteId])
+  @@map("cleaning_schedules")
+}
+
+model CleaningTaskAssignment {
+  id          String    @id @default(cuid())
+  scheduleId  String
+  areaId      String
+  employeeId  String?
+  assignedById String
+  scheduledDate DateTime @db.Date
+  scheduledTime String?
+  status      String    @default("pending") // pending, in-progress, completed, missed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  schedule   CleaningSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  area       Area             @relation(fields: [areaId], references: [id])
+  employee   Employee?        @relation(fields: [employeeId], references: [id])
+  assignedBy User             @relation(fields: [assignedById], references: [id])
+  completions TaskCompletion[]
+
+  @@index([scheduleId, scheduledDate])
+  @@map("cleaning_task_assignments")
+}
+
+model TaskCompletion {
+  id              String    @id @default(cuid())
+  assignmentId    String
+  completedById   String
+  startTime       DateTime?
+  endTime         DateTime?
+  beforePhoto     String?
+  afterPhoto      String?
+  checklistData   Json?     // Completed checklist items
+  remarks         String?
+  rating          Int?      // 1-5 supervisor rating
+  supervisorId    String?
+  supervisorRemarks String?
+  verifiedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  assignment  CleaningTaskAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  completedBy User                   @relation(fields: [completedById], references: [id])
+
+  @@map("task_completions")
+}
+
+// ==========================================
+// PHASE 5: Inspections
+// ==========================================
+
+model InspectionTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  areaTypeId  String?
+  items       Json     // Array of inspection items with weights
+  totalScore  Int      @default(100)
+  passScore   Int      @default(70)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  areaType    AreaType?    @relation(fields: [areaTypeId], references: [id])
+  inspections Inspection[]
+
+  @@map("inspection_templates")
+}
+
+model Inspection {
+  id           String   @id @default(cuid())
+  siteId       String
+  areaId       String?
+  templateId   String
+  inspectorId  String
+  inspectionDate DateTime
+  scores       Json     // Individual item scores
+  totalScore   Float
+  percentage   Float
+  status       String   @default("pending") // pending, passed, failed, requires-action
+  remarks      String?
+  photos       Json?    // Array of photo URLs
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  site      Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  area      Area?              @relation(fields: [areaId], references: [id])
+  template  InspectionTemplate @relation(fields: [templateId], references: [id])
+  inspector User               @relation(fields: [inspectorId], references: [id])
+  correctiveActions CorrectiveAction[]
+
+  @@index([siteId, inspectionDate])
+  @@map("inspections")
+}
+
+model CorrectiveAction {
+  id           String    @id @default(cuid())
+  inspectionId String
+  item         String
+  description  String
+  priority     String    @default("medium") // low, medium, high, critical
+  assignedTo   String?
+  dueDate      DateTime?
+  status       String    @default("open") // open, in-progress, closed
+  closedAt     DateTime?
+  closedRemarks String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@map("corrective_actions")
+}
+
+// ==========================================
+// PHASE 6: Complaint/Ticket System
+// ==========================================
+
+model ComplaintCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  parentId    String?
+  slaHours    Int      @default(24)
+  priority    String   @default("medium") // low, medium, high, critical
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent     ComplaintCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children   ComplaintCategory[] @relation("CategoryHierarchy")
+  complaints Complaint[]
+  slaConfigs SLAConfig[]
+
+  @@map("complaint_categories")
+}
+
+model SLAConfig {
+  id               String   @id @default(cuid())
+  categoryId       String
+  priority         String   // low, medium, high, critical
+  responseTime     Int      // minutes
+  resolutionTime   Int      // minutes
+  escalationLevel1 Int      // minutes before escalation
+  escalationLevel2 Int      // minutes before escalation
+  escalationLevel3 Int      // minutes before escalation
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  category ComplaintCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, priority])
+  @@map("sla_configs")
+}
+
+model Complaint {
+  id             String    @id @default(cuid())
+  siteId         String
+  ticketNumber   String    @unique
+  categoryId     String
+  areaId         String?
+  title          String
+  description    String
+  priority       String    @default("medium") // low, medium, high, critical
+  status         String    @default("open") // open, assigned, in-progress, pending, resolved, closed, reopened
+  source         String    @default("manual") // manual, qr, email, phone, portal
+  reporterName   String?
+  reporterEmail  String?
+  reporterPhone  String?
+  assignedToId   String?
+  createdById    String?
+  resolvedById   String?
+  photos         Json?     // Array of photo URLs
+  responseTime   DateTime?
+  resolutionTime DateTime?
+  slaDueDate     DateTime?
+  slaBreached    Boolean   @default(false)
+  resolution     String?
+  rating         Int?      // 1-5 feedback rating
+  feedback       String?
+  escalationLevel Int      @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+
+  site       Site              @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  category   ComplaintCategory @relation(fields: [categoryId], references: [id])
+  area       Area?             @relation(fields: [areaId], references: [id])
+  assignedTo User?             @relation("AssignedTo", fields: [assignedToId], references: [id])
+  createdBy  User?             @relation("CreatedBy", fields: [createdById], references: [id])
+  resolvedBy User?             @relation("ResolvedBy", fields: [resolvedById], references: [id])
+  history    ComplaintHistory[]
+
+  @@index([siteId, status])
+  @@index([ticketNumber])
+  @@map("complaints")
+}
+
+model ComplaintHistory {
+  id          String   @id @default(cuid())
+  complaintId String
+  action      String   // status_change, assignment, comment, escalation
+  fromStatus  String?
+  toStatus    String?
+  comment     String?
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  complaint Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@map("complaint_history")
+}
+
+// ==========================================
+// PHASE 7: Client & Feedback
+// ==========================================
+
+model Client {
+  id           String   @id @default(cuid())
+  siteId       String
+  name         String
+  code         String
+  contactName  String?
+  email        String?
+  phone        String?
+  address      String?
+  contractStart DateTime?
+  contractEnd  DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  site     Site           @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  contacts ClientContact[]
+  feedbacks Feedback[]
+
+  @@unique([siteId, code])
+  @@map("clients")
+}
+
+model ClientContact {
+  id          String   @id @default(cuid())
+  clientId    String
+  name        String
+  designation String?
+  email       String?
+  phone       String?
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("client_contacts")
+}
+
+model Feedback {
+  id            String   @id @default(cuid())
+  clientId      String?
+  userId        String?
+  feedbackType  String   // survey, complaint-followup, general
+  category      String?
+  rating        Int      // 1-5
+  comments      String?
+  suggestions   String?
+  isAnonymous   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("feedbacks")
+}
+
+// ==========================================
+// PHASE 8: Technical & AMC
+// ==========================================
+
+model TechnicalComplaint {
+  id           String    @id @default(cuid())
+  ticketNumber String    @unique
+  equipment    String
+  location     String
+  description  String
+  priority     String    @default("medium")
+  status       String    @default("open")
+  assignedTo   String?
+  photos       Json?
+  resolution   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  resolvedAt   DateTime?
+
+  @@map("technical_complaints")
+}
+
+model AMC {
+  id            String    @id @default(cuid())
+  siteId        String
+  vendorId      String
+  contractNumber String   @unique
+  equipment     String
+  description   String?
+  startDate     DateTime  @db.Date
+  endDate       DateTime  @db.Date
+  value         Float?
+  frequency     String    // monthly, quarterly, half-yearly, yearly
+  terms         String?
+  documents     Json?     // Array of document URLs
+  status        String    @default("active") // active, expired, terminated
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  site    Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  vendor  Vendor     @relation(fields: [vendorId], references: [id])
+  visits  AMCVisit[]
+
+  @@index([siteId])
+  @@map("amcs")
+}
+
+model AMCVisit {
+  id             String    @id @default(cuid())
+  amcId          String
+  scheduledDate  DateTime  @db.Date
+  visitDate      DateTime?
+  technicianName String?
+  workDone       String?
+  findings       String?
+  nextVisitDate  DateTime? @db.Date
+  status         String    @default("scheduled") // scheduled, completed, missed
+  photos         Json?
+  signatureUrl   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  amc AMC @relation(fields: [amcId], references: [id], onDelete: Cascade)
+
+  @@index([amcId])
+  @@map("amc_visits")
+}
+
+// ==========================================
+// PHASE 9: Vendor Management
+// ==========================================
+
+model Vendor {
+  id            String   @id @default(cuid())
+  siteId        String
+  name          String
+  code          String
+  contactName   String?
+  email         String?
+  phone         String?
+  address       String?
+  gstNumber     String?
+  panNumber     String?
+  bankName      String?
+  bankAccount   String?
+  ifscCode      String?
+  services      Json?    // Array of service types
+  rating        Float?   // Average rating
+  status        String   @default("active") // active, inactive, blacklisted
+  documents     Json?    // Array of document URLs
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  site       Site        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  amcs       AMC[]
+  workOrders WorkOrder[]
+
+  @@unique([siteId, code])
+  @@map("vendors")
+}
+
+model WorkOrder {
+  id            String    @id @default(cuid())
+  siteId        String
+  vendorId      String
+  workOrderNumber String  @unique
+  title         String
+  description   String
+  category      String
+  priority      String    @default("medium")
+  status        String    @default("draft") // draft, issued, accepted, in-progress, completed, cancelled
+  estimatedCost Float?
+  actualCost    Float?
+  startDate     DateTime? @db.Date
+  dueDate       DateTime? @db.Date
+  completedDate DateTime?
+  createdById   String
+  documents     Json?
+  remarks       String?
+  rating        Int?      // Vendor rating for this work
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  site      Site            @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  vendor    Vendor          @relation(fields: [vendorId], references: [id])
+  createdBy User            @relation("WOCreatedBy", fields: [createdById], references: [id])
+  items     WorkOrderItem[]
+
+  @@index([siteId])
+  @@map("work_orders")
+}
+
+model WorkOrderItem {
+  id          String  @id @default(cuid())
+  workOrderId String
+  description String
+  quantity    Float   @default(1)
+  unit        String?
+  rate        Float?
+  amount      Float?
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@map("work_order_items")
+}
+
+// ==========================================
+// PHASE 10: Inventory Management
+// ==========================================
+
+model InventoryCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  parentId    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   InventoryCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children InventoryCategory[] @relation("CategoryTree")
+  items    InventoryItem[]
+
+  @@map("inventory_categories")
+}
+
+model InventoryItem {
+  id             String   @id @default(cuid())
+  siteId         String
+  categoryId     String
+  name           String
+  code           String
+  description    String?
+  unit           String   // pcs, kg, ltr, etc
+  currentStock   Float    @default(0)
+  minStock       Float    @default(0)
+  maxStock       Float?
+  reorderLevel   Float?
+  unitPrice      Float?
+  location       String?  // Storage location
+  isConsumable   Boolean  @default(true)
+  isPPE          Boolean  @default(false)
+  expiryTracking Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  site         Site               @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  category     InventoryCategory  @relation(fields: [categoryId], references: [id])
+  transactions StockTransaction[]
+  indentItems  IndentItem[]
+  ppeIssues    PPEIssue[]
+
+  @@unique([siteId, code])
+  @@map("inventory_items")
+}
+
+model StockTransaction {
+  id            String   @id @default(cuid())
+  siteId        String
+  itemId        String
+  transactionType String // in, out, adjustment, transfer
+  quantity      Float
+  previousStock Float
+  newStock      Float
+  unitPrice     Float?
+  totalValue    Float?
+  reference     String?  // PO number, indent number, etc
+  reason        String?
+  batchNumber   String?
+  expiryDate    DateTime?
+  createdBy     String
+  createdAt     DateTime @default(now())
+
+  site Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, itemId])
+  @@map("stock_transactions")
+}
+
+model MaterialIndent {
+  id           String    @id @default(cuid())
+  siteId       String
+  indentNumber String    @unique
+  requestedBy  String
+  department   String?
+  purpose      String?
+  requiredDate DateTime? @db.Date
+  status       String    @default("draft") // draft, submitted, approved, rejected, partially-issued, issued
+  approvedBy   String?
+  approvedAt   DateTime?
+  remarks      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  site  Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  items IndentItem[]
+
+  @@index([siteId])
+  @@map("material_indents")
+}
+
+model IndentItem {
+  id            String   @id @default(cuid())
+  indentId      String
+  itemId        String
+  requestedQty  Float
+  approvedQty   Float?
+  issuedQty     Float?
+  remarks       String?
+
+  indent MaterialIndent @relation(fields: [indentId], references: [id], onDelete: Cascade)
+  item   InventoryItem  @relation(fields: [itemId], references: [id])
+
+  @@map("indent_items")
+}
+
+model PPEIssue {
+  id          String    @id @default(cuid())
+  employeeId  String
+  itemId      String
+  quantity    Float
+  issuedDate  DateTime  @db.Date
+  returnDate  DateTime? @db.Date
+  condition   String?   // new, good, damaged
+  remarks     String?
+  createdAt   DateTime  @default(now())
+
+  employee Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  item     InventoryItem @relation(fields: [itemId], references: [id])
+
+  @@map("ppe_issues")
+}
+
+// ==========================================
+// PHASE 11: Front Desk & Events
+// ==========================================
+
+model MeetingRoom {
+  id        String   @id @default(cuid())
+  siteId    String
+  name      String
+  capacity  Int
+  amenities Json?    // Array of amenities
+  location  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site     Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  bookings MeetingBooking[]
+
+  @@map("meeting_rooms")
+}
+
+model MeetingBooking {
+  id           String   @id @default(cuid())
+  roomId       String
+  title        String
+  description  String?
+  organizer    String
+  attendees    Int?
+  startTime    DateTime
+  endTime      DateTime
+  requirements Json?    // Special requirements
+  status       String   @default("confirmed") // confirmed, cancelled, completed
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  room MeetingRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, startTime])
+  @@map("meeting_bookings")
+}
+
+model Event {
+  id           String    @id @default(cuid())
+  siteId       String
+  name         String
+  description  String?
+  eventType    String    // conference, celebration, training, visitor
+  startDate    DateTime
+  endDate      DateTime
+  location     String?
+  expectedCount Int?
+  organizer    String?
+  requirements Json?     // Setup requirements
+  status       String    @default("planned") // planned, setup, in-progress, completed, cancelled
+  setupNotes   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  site Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([siteId, startDate])
+  @@map("events")
+}
+
+// ==========================================
+// PHASE 12: Incidents & Safety
+// ==========================================
+
+model Incident {
+  id              String    @id @default(cuid())
+  siteId          String
+  incidentNumber  String    @unique
+  incidentType    String    // accident, near-miss, unsafe-condition, fire, theft, other
+  severity        String    // minor, moderate, major, critical
+  location        String
+  dateTime        DateTime
+  description     String
+  immediateAction String?
+  reportedById    String
+  witnesses       Json?     // Array of witness names
+  injuries        Boolean   @default(false)
+  injuryDetails   String?
+  propertyDamage  Boolean   @default(false)
+  damageDetails   String?
+  photos          Json?
+  status          String    @default("reported") // reported, investigating, action-taken, closed
+  investigatedById String?
+  investigation   String?
+  rootCause       String?
+  correctiveAction String?
+  preventiveAction String?
+  closedAt        DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  site         Site  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  reportedBy   User  @relation("ReportedBy", fields: [reportedById], references: [id])
+  investigatedBy User? @relation("InvestigatedBy", fields: [investigatedById], references: [id])
+
+  @@index([siteId])
+  @@map("incidents")
+}
+
+model SafetyInspection {
+  id             String   @id @default(cuid())
+  inspectionType String   // fire-safety, electrical, general
+  location       String
+  inspectorName  String
+  inspectionDate DateTime
+  checklist      Json     // Safety checklist items
+  findings       String?
+  status         String   @default("pass") // pass, fail, partial
+  nextDueDate    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("safety_inspections")
+}
+
+// ==========================================
+// PHASE 13: Training & Documents
+// ==========================================
+
+model Training {
+  id            String   @id @default(cuid())
+  siteId        String
+  title         String
+  description   String?
+  trainingType  String   // induction, safety, skill, refresher
+  trainer       String?
+  trainingDate  DateTime
+  duration      Int?     // hours
+  location      String?
+  maxParticipants Int?
+  materials     Json?    // Training materials URLs
+  status        String   @default("scheduled") // scheduled, completed, cancelled
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  site      Site                 @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdBy User                 @relation(fields: [createdById], references: [id])
+  attendees TrainingAttendance[]
+
+  @@index([siteId])
+  @@map("trainings")
+}
+
+model TrainingAttendance {
+  id         String    @id @default(cuid())
+  trainingId String
+  employeeId String
+  attended   Boolean   @default(false)
+  score      Float?    // If assessment
+  certificate String?  // Certificate URL
+  feedback   String?
+  createdAt  DateTime  @default(now())
+
+  training Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, employeeId])
+  @@map("training_attendance")
+}
+
+model Document {
+  id           String    @id @default(cuid())
+  siteId       String
+  title        String
+  description  String?
+  category     String    // policy, sop, manual, report, certificate
+  filePath     String
+  fileType     String
+  fileSize     Int?
+  version      String?
+  tags         Json?     // Array of tags
+  expiryDate   DateTime?
+  isPublic     Boolean   @default(false)
+  uploadedById String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  site       Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id])
+
+  @@index([siteId, category])
+  @@map("documents")
+}
+
+model SOP {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  category    String
+  content     String   @db.Text
+  version     String
+  effectiveDate DateTime
+  reviewDate  DateTime?
+  approvedBy  String?
+  status      String   @default("draft") // draft, active, archived
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("sops")
+}
+
+// ==========================================
+// PHASE 14: Notifications & QR
+// ==========================================
+
+model Notification {
+  id          String    @id @default(cuid())
+  siteId      String?
+  type        String    // alert, reminder, info, warning
+  title       String
+  message     String
+  priority    String    @default("normal") // low, normal, high, urgent
+  module      String?   // Source module
+  entityId    String?   // Related entity ID
+  entityType  String?   // Related entity type
+  sentById    String?
+  sentToId    String?
+  isRead      Boolean   @default(false)
+  readAt      DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  site   Site? @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  sentBy User? @relation("SentBy", fields: [sentById], references: [id])
+  sentTo User? @relation("ReceivedBy", fields: [sentToId], references: [id])
+
+  @@index([sentToId, isRead])
+  @@map("notifications")
+}
+
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  type      String   // email, sms, push, in-app
+  subject   String?
+  body      String
+  variables Json?    // Available variables
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_templates")
+}
+
+model QRCode {
+  id        String   @id @default(cuid())
+  siteId    String
+  areaId    String?
+  code      String   @unique
+  type      String   // complaint, attendance, asset
+  label     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site Site  @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  area Area? @relation(fields: [areaId], references: [id])
+
+  @@map("qr_codes")
+}
+
+// ==========================================
+// PHASE 15: Shift Handover
+// ==========================================
+
+model ShiftHandover {
+  id              String   @id @default(cuid())
+  siteId          String
+  handoverFromId  String
+  handoverToId    String
+  handoverDate    DateTime @db.Date
+  shiftFrom       String
+  shiftTo         String
+  pendingTasks    Json?    // Array of pending tasks
+  completedTasks  Json?    // Array of completed tasks
+  incidents       String?
+  equipmentStatus String?
+  remarks         String?
+  photos          Json?
+  acknowledgedAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  site         Site @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  handoverFrom User @relation("HandoverFrom", fields: [handoverFromId], references: [id])
+  handoverTo   User @relation("HandoverTo", fields: [handoverToId], references: [id])
+
+  @@index([siteId, handoverDate])
+  @@map("shift_handovers")
+}
