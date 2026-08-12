@@ -91,8 +91,11 @@ export const authOptions: NextAuthOptions = {
         try {
           const { email, password } = loginSchema.parse(credentials);
 
+          const trimmedEmail = email.trim().toLowerCase();
+          const trimmedPassword = password.trim();
+
           // Demo mode: check against hardcoded demo user
-          if (email === DEMO_USER.email && password === DEMO_USER.password) {
+          if (trimmedEmail === DEMO_USER.email.toLowerCase() && trimmedPassword === DEMO_USER.password) {
             return {
               id: DEMO_USER.id,
               email: DEMO_USER.email,
